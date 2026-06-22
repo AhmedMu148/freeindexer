@@ -8,7 +8,6 @@ use App\Models\User;
 use App\Models\WebhookEvent;
 use App\Support\SubscriptionBillingIdentityResolver;
 use App\Support\PaymentCycleIdentity;
-use App\Support\Payments\PaymentProviderResolver;
 use App\Services\AppClient;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -19,7 +18,6 @@ use Illuminate\Support\Str;
 class CentralPaymentIntegrationService
 {
     protected SubscriptionBillingIdentityResolver $identityResolver;
-    protected PaymentProviderResolver $providerResolver;
 
     private string $baseUrl;
     private string $apiKey;
@@ -29,12 +27,9 @@ class CentralPaymentIntegrationService
     private int $timeout;
     private bool $verifySSL;
 
-    public function __construct(
-        SubscriptionBillingIdentityResolver $identityResolver,
-        PaymentProviderResolver $providerResolver
-    ) {
+    public function __construct(SubscriptionBillingIdentityResolver $identityResolver)
+    {
         $this->identityResolver = $identityResolver;
-        $this->providerResolver = $providerResolver;
         $this->baseUrl = rtrim(config('services.central_payment.base_url', 'https://billing.flare99.com'), '/');
         $this->apiKey = config('services.central_payment.api_key', '');
         $this->secretKey = config('services.central_payment.secret_key', '');
@@ -276,11 +271,7 @@ class CentralPaymentIntegrationService
             return;
         }
 
-        $providerCode = $this->providerResolver->fromMetadata($transaction, 'central_payment');
-        $gateway = DB::table('pym_gateways')->where('code', $providerCode)->first();
-        $gatewayId = $gateway ? $gateway->id : 0;
-
-        DB::transaction(function () use ($paymentId, $uid, $planId, $transaction, $metadata, $gatewayId) {
+        DB::transaction(function () use ($paymentId, $uid, $planId, $transaction, $metadata) {
             $payment = PymPayment::lockForUpdate()->find($paymentId);
             if (!$payment) {
                 Log::warning("Central Payment: Payment row ID {$paymentId} not found.");
@@ -307,7 +298,7 @@ class CentralPaymentIntegrationService
                 if (!$sub) {
                     $subscriptionId = DB::table('pym_subscriptions')->insertGetId([
                         'uid' => $payment->uid,
-                        'gateway_id' => $gatewayId,
+                        'gateway_id' => $payment->gateway_id,
                         'subscr_id' => $subscrId,
                         'plan_id' => $plan->id,
                         'created_at' => gmdate('Y-m-d H:i:s'),
@@ -319,7 +310,6 @@ class CentralPaymentIntegrationService
             }
 
             $payment->update([
-                'gateway_id' => $gatewayId,
                 'subscription_id' => $subscriptionId ?? $payment->subscription_id ?? 0,
                 'txn' => $transaction['transaction_hash'] ?? $transaction['id'] ?? null,
                 'payment_hash' => $transaction['transaction_hash'] ?? null,
@@ -390,17 +380,13 @@ class CentralPaymentIntegrationService
 
         Log::info("Handling subscription.renewed cycle: " . ($cycleIdentity->billingCycleCount ?? 'unknown') . " for sub hash: {$subscriptionHash}");
 
-        $providerCode = $this->providerResolver->fromMetadata($subscriptionData, 'central_payment');
-        $gateway = DB::table('pym_gateways')->where('code', $providerCode)->first();
-        $gatewayId = $gateway ? $gateway->id : 0;
-
-        DB::transaction(function () use ($cycleIdentity, $subscriptionHash, $paymentId, $uid, $planId, $gatewayId) {
+        DB::transaction(function () use ($cycleIdentity, $subscriptionHash, $paymentId, $uid, $planId) {
             $sub = DB::table('pym_subscriptions')->where('subscr_id', $subscriptionHash)->first();
             if (!$sub) {
                 $payment = PymPayment::find($paymentId);
                 $subId = DB::table('pym_subscriptions')->insertGetId([
                     'uid' => $uid ?? ($payment ? $payment->uid : 0),
-                    'gateway_id' => $gatewayId,
+                    'gateway_id' => $payment ? $payment->gateway_id : 2,
                     'subscr_id' => $subscriptionHash,
                     'plan_id' => $planId ?? ($payment ? $payment->plan_id : null),
                     'created_at' => gmdate('Y-m-d H:i:s'),
