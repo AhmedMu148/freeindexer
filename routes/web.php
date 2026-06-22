@@ -87,6 +87,7 @@ Route::middleware('auth')->group(function () {
   Route::post('/billing/subscribe', [BillingController::class, 'subscribe'])->name('billing.subscribe');
 });
 
+Route::get('/wallet/success',     [BillingController::class, 'return'])->name('wallet.success');
 Route::get('/paypal/return',     [BillingController::class, 'return'])->name('paypal.return');
 Route::get('/paypal/cancel',     [BillingController::class, 'cancel'])->name('paypal.cancel');
 

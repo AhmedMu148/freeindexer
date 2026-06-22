@@ -6,6 +6,7 @@ use App\Services\CentralPaymentIntegrationService;
 use App\Models\WebhookEvent;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class CentralPaymentWebhookController extends Controller
 {
@@ -33,9 +34,15 @@ class CentralPaymentWebhookController extends Controller
             return response('Missing event identifier', 400);
         }
 
+        $data = $payload['data'] ?? [];
+        $transaction = $data['transaction'] ?? $data['subscription'] ?? $data;
+        $providerCode = app(\App\Support\Payments\PaymentProviderResolver::class)->fromMetadata($transaction, 'central_payment');
+        $gateway = DB::table('pym_gateways')->where('code', $providerCode)->first();
+        $provider = $gateway ? $gateway->code : 'central_payment';
+
         // 2. Check for duplicate webhook event to guarantee idempotency
-        $existingEvent = WebhookEvent::where('provider', 'central_payment')
-            ->where('event_id', $eventId)
+        $existingEvent = WebhookEvent::where('event_id', $eventId)
+            ->whereIn('provider', [$provider, 'central_payment'])
             ->first();
 
         if ($existingEvent) {
@@ -45,7 +52,7 @@ class CentralPaymentWebhookController extends Controller
 
         // 3. Log webhook event start
         $webhookEvent = WebhookEvent::create([
-            'provider' => 'central_payment',
+            'provider' => $provider,
             'event_id' => $eventId,
             'event_type' => $eventType,
             'payload' => $payload,

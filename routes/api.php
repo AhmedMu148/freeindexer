@@ -9,8 +9,10 @@ use App\Http\Controllers\Api\V1\CmsSectionController;
 
 
 Route::post('paypal/ipn', [BillingController::class, 'ipn']);
-Route::post('central-payment/webhook', [CentralPaymentWebhookController::class, 'handle']);
-
+Route::post('/webhooks/central-payment', [CentralPaymentWebhookController::class, 'handle'])
+    ->name('webhooks.central-payment');
+Route::post('/central-payment/webhook', [CentralPaymentWebhookController::class, 'handle'])
+    ->name('webhooks.central-payment.old');
 // CMS API Routes
 Route::prefix('v1/cms')
     ->name('api.cms.')

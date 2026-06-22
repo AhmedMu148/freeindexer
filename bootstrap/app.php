@@ -12,6 +12,12 @@ return Application::configure(basePath: dirname(__DIR__))
     health: '/up',
   )
   ->withMiddleware(function (Middleware $middleware): void {
+    $middleware->validateCsrfTokens(except: [
+      'api/webhooks/*',
+      'api/ipn/*',
+      'ipn/*',
+      'secure/*',
+    ]);
     $middleware->alias([
       'cms.auth' => \App\Http\Middleware\AuthenticateCmsApiToken::class,
       'cms.scope' => \App\Http\Middleware\EnforceCmsApiScope::class,

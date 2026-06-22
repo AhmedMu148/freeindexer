@@ -59,7 +59,8 @@
                         <ul class="dropdown-menu p-0" aria-labelledby="navbarDropdownMenuLink">
                             <li><a class="dropdown-item py-2" href="{{ route('profile') }}">Profile</a></li>
                             <div class="dropdown-divider p-0 m-0"></div>
-                            <li><a class="dropdown-item py-2" href="{{ route('tickets.sso') }}">My Tickets</a></li>
+                            <li><a class="dropdown-item py-2" href="{{ route('tickets.sso') }}"
+                                    target="_blank">My Tickets</a></li>
                             <div class="dropdown-divider p-0 m-0"></div>
                             <li>
                                 <a href="javascript:void(0)" onclick="document.getElementById('logout-form').submit()"

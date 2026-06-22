@@ -242,6 +242,10 @@ class CentralPaymentIntegrationService
                 $this->handleTransactionCompleted($payload);
                 break;
 
+            case 'subscription.activated':
+                $this->handleSubscriptionActivated($payload);
+                break;
+
             case 'subscription.renewed':
             case 'subscription.payment.succeeded':
                 $this->handleSubscriptionRenewed($payload);
@@ -323,6 +327,109 @@ class CentralPaymentIntegrationService
                 'subscription_id' => $subscriptionId ?? $payment->subscription_id ?? 0,
                 'txn' => $transaction['transaction_hash'] ?? $transaction['id'] ?? null,
                 'payment_hash' => $transaction['transaction_hash'] ?? null,
+                'metadata' => $metadata,
+                'status' => 3,
+                'completed_at' => now(),
+            ]);
+
+            $existingOrder = Order::where('payment_id', $paymentId)->first();
+            if ($existingOrder) {
+                Log::info("Central Payment: Order already exists for payment ID {$paymentId}.");
+                return;
+            }
+
+            $startDate = gmdate('Y-m-d');
+            $endDate = gmdate('Y-m-d', strtotime($startDate . ' + 32 days'));
+
+            if ($plan->id != 8) {
+                Order::create([
+                    'uid' => $payment->uid,
+                    'payment_id' => $payment->id,
+                    'subscription_id' => $subscriptionId ?? 0,
+                    'plan_id' => $plan->id,
+                    'indexer' => $plan->indexer,
+                    'bg_indexer' => $plan->bg_indexer,
+                    'backlinks' => $plan->backlinks,
+                    'start' => $startDate,
+                    'end' => $endDate,
+                    'status_id' => 2,
+                    'billing_cycle_count' => 1,
+                ]);
+
+                $this->addPoints($payment->uid, $plan->indexer, $plan->bg_indexer, $plan->backlinks);
+            } else {
+                $key = Str::random(32);
+                $appClient = app(AppClient::class);
+                $key = $appClient->createKeyRow($payment->uid, $payment->id, $key);
+                $appClient->sendKeyApi($payment->uid, $key);
+            }
+        });
+    }
+
+    /**
+     * Handle subscription.activated event
+     */
+    protected function handleSubscriptionActivated(array $payload): void
+    {
+        $data = $payload['data'] ?? [];
+        $subscription = $data['subscription'] ?? [];
+
+        $metadata = $subscription['metadata'] ?? [];
+        $paymentId = $metadata['payment_id'] ?? null;
+        $uid = $metadata['user_id'] ?? null;
+        $planId = $metadata['plan_id'] ?? null;
+
+        if (!$paymentId) {
+            Log::warning('Central Payment subscription.activated: payment_id not found in metadata.');
+            return;
+        }
+
+        $providerCode = $this->providerResolver->fromMetadata($subscription, 'central_payment');
+        $gateway = DB::table('pym_gateways')->where('code', $providerCode)->first();
+        $gatewayId = $gateway ? $gateway->id : 0;
+
+        DB::transaction(function () use ($paymentId, $uid, $planId, $subscription, $metadata, $gatewayId) {
+            $payment = PymPayment::lockForUpdate()->find($paymentId);
+            if (!$payment) {
+                Log::warning("Central Payment: Payment row ID {$paymentId} not found.");
+                return;
+            }
+
+            if ($payment->status == 3) {
+                Log::info("Central Payment: Payment ID {$paymentId} already marked completed.");
+                return;
+            }
+
+            $plan = DB::table('plans')->where('id', $planId ?? $payment->plan_id)->first();
+            if (!$plan) {
+                Log::error("Central Payment: Plan ID {$planId} not found.");
+                return;
+            }
+
+            $subscriptionId = null;
+            if (isset($subscription['subscription_hash'])) {
+                $subscrId = $subscription['subscription_hash'];
+                
+                $sub = DB::table('pym_subscriptions')->where('subscr_id', $subscrId)->first();
+                if (!$sub) {
+                    $subscriptionId = DB::table('pym_subscriptions')->insertGetId([
+                        'uid' => $payment->uid,
+                        'gateway_id' => $gatewayId,
+                        'subscr_id' => $subscrId,
+                        'plan_id' => $plan->id,
+                        'created_at' => gmdate('Y-m-d H:i:s'),
+                        'updated_at' => gmdate('Y-m-d H:i:s'),
+                    ]);
+                } else {
+                    $subscriptionId = $sub->id;
+                }
+            }
+
+            $payment->update([
+                'gateway_id' => $gatewayId,
+                'subscription_id' => $subscriptionId ?? $payment->subscription_id ?? 0,
+                'txn' => $subscription['subscription_hash'] ?? null,
+                'payment_hash' => $subscription['subscription_hash'] ?? null,
                 'metadata' => $metadata,
                 'status' => 3,
                 'completed_at' => now(),

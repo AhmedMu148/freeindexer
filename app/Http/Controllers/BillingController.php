@@ -62,7 +62,7 @@ class BillingController extends Controller
           'plan_id' => $plan->id,
           'customer_email' => $user->email,
           'customer_name' => $user->name ?? '',
-          'return_url' => route('paypal.return'), // reuse old thanks page
+          'return_url' => route('wallet.success', ['plan_id' => $plan->id]),
           'metadata' => [
             'payment_id' => $payment->id,
             'user_id' => $user->id,
@@ -79,7 +79,7 @@ class BillingController extends Controller
           'description' => "Free Indexer {$plan->name} plan.",
           'customer_email' => $user->email,
           'customer_name' => $user->name ?? '',
-          'return_url' => route('paypal.return'), // reuse old thanks page
+          'return_url' => route('wallet.success', ['plan_id' => $plan->id]),
           'metadata' => [
             'payment_id' => $payment->id,
             'user_id' => $user->id,
@@ -340,6 +340,50 @@ class BillingController extends Controller
 
   public function return(Request $r)
   {
+    $plan = $r->query('plan', 'Unknown');
+    $planId = $r->query('plan_id');
+
+    // If plan is Unknown, attempt to resolve the correct plan ID from database or session/auth context
+    if ($plan === 'Unknown') {
+      if ($planId) {
+        $plan = $planId;
+      } else {
+        // Try resolving from subscription_id if present
+        $subscriptionId = $r->query('subscription_id');
+        if ($subscriptionId) {
+          $sub = DB::table('pym_subscriptions')
+            ->where('subscr_id', $subscriptionId)
+            ->first();
+          if ($sub && $sub->plan_id) {
+            $plan = $sub->plan_id;
+          }
+        }
+
+        // Try resolving from the current user's last payment if still Unknown and user is logged in
+        if ($plan === 'Unknown' && Auth::check()) {
+          $userPayment = DB::table('pym_payments')
+            ->where('uid', Auth::id())
+            ->orderBy('id', 'desc')
+            ->first();
+          if ($userPayment && $userPayment->plan_id) {
+            $plan = $userPayment->plan_id;
+          }
+        }
+      }
+    }
+
+    $currentPath = '/' . ltrim($r->getPathInfo(), '/');
+
+    // We want the URL to be: /wallet/success?subscription_id=...&status=...&plan=<plan_id>&amount=...&currency=...
+    // Redirect if path is not /wallet/success, or if plan is Unknown (but now resolved), or if plan_id is still present in query
+    if ($currentPath !== '/wallet/success' || $r->has('plan_id') || $r->query('plan') === 'Unknown') {
+      $queryParams = $r->query();
+      unset($queryParams['plan_id']);
+      $queryParams['plan'] = $plan;
+
+      return redirect()->route('wallet.success', $queryParams);
+    }
+
     return view('paypal.thanks');
   }
 
