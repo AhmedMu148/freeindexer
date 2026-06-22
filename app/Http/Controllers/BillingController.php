@@ -44,9 +44,9 @@ class BillingController extends Controller
     $payment = PymPayment::create([
       'uid'             => $user->id,
       'plan_id'         => $plan->id,
-      'gateway_id'      => 2, // 2 is Central Payment
+      'gateway_id'      => null,
       'product'         => $plan->name,
-      'txn'             => '',
+      'txn'             => null,
       'amount'          => $plan->price,
       'currency_id'     => 1,
       'source_details'  => null,
@@ -69,7 +69,7 @@ class BillingController extends Controller
             'plan_id' => $plan->id,
           ]
         ]);
-        
+
         $redirectUrl = $response['hosted_checkout_url'] ?? null;
       } else {
         // One-time payment (e.g. app client)
@@ -86,7 +86,7 @@ class BillingController extends Controller
             'plan_id' => $plan->id,
           ]
         ]);
-        
+
         $redirectUrl = $response['hosted_url'] ?? null;
       }
 
@@ -95,7 +95,6 @@ class BillingController extends Controller
       }
 
       return redirect()->away($redirectUrl);
-
     } catch (\Throwable $e) {
       Log::error("Failed to initiate Central Payment checkout: " . $e->getMessage(), [
         'plan_id' => $plan->id,
@@ -104,7 +103,7 @@ class BillingController extends Controller
       ]);
 
       // Update payment status to failed
-      $payment->update(['status' => 2]); // 2 is Failed
+      $payment->update(['status' => 4]); // 4 is Failed
 
       return redirect()->back()->with('error', 'Unable to process checkout. Please try again later.');
     }

@@ -24,7 +24,7 @@ class CentralPaymentWebhookController extends Controller
             Log::error("Failed to parse JSON payload: " . json_last_error_msg());
             return response('Invalid JSON', 400);
         }
-        dd($payload);
+        Log::warning("s", $payload);
         $eventId = $payload['event_id'] ?? $payload['id'] ?? null;
         $eventType = $payload['event'] ?? 'unknown';
 

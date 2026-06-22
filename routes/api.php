@@ -3,9 +3,13 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\IndexerController;
+use App\Http\Controllers\CentralPaymentWebhookController;
+use App\Http\Controllers\Api\V1\CmsPageController;
+use App\Http\Controllers\Api\V1\CmsSectionController;
+
 
 Route::post('paypal/ipn', [BillingController::class, 'ipn']);
-Route::post('central-payment/webhook', [\App\Http\Controllers\CentralPaymentWebhookController::class, 'handle']);
+Route::post('central-payment/webhook', [CentralPaymentWebhookController::class, 'handle']);
 
 // CMS API Routes
 Route::prefix('v1/cms')
@@ -14,26 +18,23 @@ Route::prefix('v1/cms')
     ->group(function () {
         // Pages
         Route::middleware('cms.scope:cms.pages.read')->group(function () {
-            Route::get('pages', [\App\Http\Controllers\Api\V1\CmsPageController::class, 'index'])->name('pages.index');
-            Route::get('pages/{page}', [\App\Http\Controllers\Api\V1\CmsPageController::class, 'show'])->name('pages.show');
+            Route::get('pages', [CmsPageController::class, 'index'])->name('pages.index');
+            Route::get('pages/{page}', [CmsPageController::class, 'show'])->name('pages.show');
         });
 
         Route::middleware('cms.scope:cms.pages.write')->group(function () {
-            Route::post('pages', [\App\Http\Controllers\Api\V1\CmsPageController::class, 'store'])->name('pages.store');
-            Route::match(['put', 'patch'], 'pages/{page}', [\App\Http\Controllers\Api\V1\CmsPageController::class, 'update'])->name('pages.update');
+            Route::post('pages', [CmsPageController::class, 'store'])->name('pages.store');
+            Route::match(['put', 'patch'], 'pages/{page}', [CmsPageController::class, 'update'])->name('pages.update');
         });
 
         // Sections
         Route::middleware('cms.scope:cms.sections.read')->group(function () {
-            Route::get('sections', [\App\Http\Controllers\Api\V1\CmsSectionController::class, 'index'])->name('sections.index');
-            Route::get('sections/{section}', [\App\Http\Controllers\Api\V1\CmsSectionController::class, 'show'])->name('sections.show');
+            Route::get('sections', [CmsSectionController::class, 'index'])->name('sections.index');
+            Route::get('sections/{section}', [CmsSectionController::class, 'show'])->name('sections.show');
         });
 
         Route::middleware('cms.scope:cms.sections.write')->group(function () {
-            Route::post('sections', [\App\Http\Controllers\Api\V1\CmsSectionController::class, 'store'])->name('sections.store');
-            Route::match(['put', 'patch'], 'sections/{section}', [\App\Http\Controllers\Api\V1\CmsSectionController::class, 'update'])->name('sections.update');
+            Route::post('sections', [CmsSectionController::class, 'store'])->name('sections.store');
+            Route::match(['put', 'patch'], 'sections/{section}', [CmsSectionController::class, 'update'])->name('sections.update');
         });
     });
-
-
-
